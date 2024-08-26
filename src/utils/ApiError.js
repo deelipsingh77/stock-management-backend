@@ -11,7 +11,6 @@ class ApiError extends Error {
     this.data = null;
     this.success = false;
     this.errors = errors;
-    this.localFilePaths = localFilePaths;
 
     if (process.env.NODE_ENV === "development") {
       this.stack = stack;
