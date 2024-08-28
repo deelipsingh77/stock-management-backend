@@ -2,6 +2,7 @@ import asyncHandler from "../utils/async-handler.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import User from "../models/user.model.js";
+import jwt from "jsonwebtoken";
 
 const generateAccessAndRefereshTokens = async (userId) => {
   try {
@@ -30,7 +31,18 @@ const registerUser = asyncHandler(async (req, res) => {
   //Check for user creation
   //Send response
 
-  const { fullName, username, password, email } = req.body;
+  const {
+    fullName,
+    username,
+    password,
+    email,
+    company,
+    zone,
+    branch,
+    division,
+    role,
+    lob,
+  } = req.body;
 
   if (
     [fullName, username, password, email].some((field) => field?.trim() === "")
@@ -54,6 +66,12 @@ const registerUser = asyncHandler(async (req, res) => {
     username: username.toLowerCase(),
     password,
     email,
+    company,
+    zone,
+    branch,
+    division,
+    role,
+    lob,
   });
 
   const createdUser = await User.findById(user._id).select(
@@ -227,9 +245,42 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 });
 
 const getCurrentUser = asyncHandler(async (req, res) => {
-  return res
-    .status(200)
-    .json(new ApiResponse(200, req.user, "User fetched successfully"));
+  // Extract the token from the HTTP-only cookie
+  const token = req.cookies?.accessToken;
+  console.log(req.cookies);
+
+  // Check if the token exists
+  if (!token) {
+    return res
+      .status(401)
+      .json(new ApiResponse(401, null, "No token provided"));
+  }
+
+  try {
+    // Verify the token using your secret key
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    console.log("Decoded token payload:", decoded);
+
+    // Fetch the user based on the decoded token's payload (e.g., user ID)
+    const user = await User.findById(decoded._id).select(
+      "-password -refreshToken"
+    );
+
+    if (!user) {
+      return res.status(404).json(new ApiResponse(404, null, "User not found"));
+    }
+
+    // Respond with the user details
+    return res
+      .status(200)
+      .json(new ApiResponse(200, user, "User fetched successfully"));
+  } catch (error) {
+    // If token verification fails, return an error
+    console.error("Token verification error:", error);
+    return res
+      .status(401)
+      .json(new ApiResponse(401, null, "Invalid or expired token"));
+  }
 });
 
 const updateAccountDetails = asyncHandler(async (req, res) => {

@@ -31,6 +31,30 @@ const userSchema = new Schema(
       trim: true,
       index: true,
     },
+    phoneNumber: {
+      type: String,
+      trim: true,
+    },
+    company: {
+      type: String,
+      ref: "Company",
+    },
+    zone: {
+      type: String,
+      ref: "Zone",
+    },
+    branch: {
+      type: String,
+      ref: "Branch",
+    },
+    division: {
+      type: String,
+      ref: "Division",
+    },
+    lob: {
+      type: String,
+      trim: true,
+    },
     role: {
       type: String,
       enum: ["user", "admin"],
