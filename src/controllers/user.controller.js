@@ -4,7 +4,7 @@ import ApiResponse from "../utils/ApiResponse.js";
 import User from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 
-const generateAccessAndRefereshTokens = async (userId) => {
+const generateAccessAndRefreshTokens = async (userId) => {
   try {
     const user = await User.findById(userId);
     const accessToken = user.generateAccessToken();
@@ -123,7 +123,7 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid user credentials");
   }
 
-  const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
+  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
     user._id
   );
 
@@ -183,16 +183,18 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     req.cookies.refreshToken || req.body.refreshToken;
 
   if (!incomingRefreshToken) {
-    throw new ApiError(401, "unauthorized request");
+    return res.status(401).json({ message: "Unauthorized request" });
   }
 
   try {
+    // Verify the incoming refresh token
     const decodedToken = jwt.verify(
       incomingRefreshToken,
       process.env.REFRESH_TOKEN_SECRET
     );
 
-    const user = await User.findById(decodedToken?._id);
+    // Find the user in the database
+    const user = await User.findById(decodedToken._id);
 
     if (!user) {
       throw new ApiError(401, "Invalid refresh token");
@@ -202,27 +204,35 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       throw new ApiError(401, "Refresh token is expired or used");
     }
 
-    const options = {
+    // Generate new access and refresh tokens
+    const { accessToken, refreshToken } =
+      await generateAccessAndRefreshTokens(user._id);
+
+    // Update user's refresh token in the database
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    // Set cookie options
+    const cookieOptions = {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production", // Use secure cookies in production
+      sameSite: "Lax", // Adjust this depending on your use case
     };
 
-    const { accessToken, newRefreshToken } =
-      await generateAccessAndRefereshTokens(user._id);
-
+    // Set new tokens in cookies
     return res
       .status(200)
-      .cookie("accessToken", accessToken, options)
-      .cookie("refreshToken", newRefreshToken, options)
-      .json(
-        new ApiResponse(
-          200,
-          { accessToken, refreshToken: newRefreshToken },
-          "Access token refreshed"
-        )
-      );
+      .cookie("accessToken", accessToken, cookieOptions)
+      .cookie("refreshToken", refreshToken, cookieOptions)
+      .json({ accessToken, refreshToken });
   } catch (error) {
-    throw new ApiError(401, error?.message || "Invalid refresh token");
+    console.error("Refresh token error:", error.message);
+
+    // Clear the cookies if there's an error with the tokens
+    res.clearCookie("accessToken");
+    res.clearCookie("refreshToken");
+
+    return res.status(401).json({ message: "Invalid refresh token" });
   }
 });
 

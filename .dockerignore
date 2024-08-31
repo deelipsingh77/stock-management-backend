@@ -1,0 +1,25 @@
+# Ignore files and directories commonly excluded in Docker builds
+
+# Ignore version control files
+.git
+.svn
+
+# Ignore build artifacts
+node_modules
+dist
+build
+
+# Ignore development files
+*.log
+*.tmp
+*.bak
+
+# Ignore editor-specific files
+.vscode
+.idea
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+.env
