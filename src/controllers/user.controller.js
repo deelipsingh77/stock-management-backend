@@ -318,8 +318,12 @@ const getUserById = asyncHandler(async (req, res) => {
 
 const updateUserById = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const updatedData = req.body;
-
+  const updatedData = {
+    ...req.body,
+    ...(req.body.username && { username: req.body.username.toLowerCase() }),
+    ...(req.body.role && { role: req.body.role.toLowerCase() }),
+  };
+  
   const user = await User.findByIdAndUpdate(
     userId,
     { $set: updatedData },
