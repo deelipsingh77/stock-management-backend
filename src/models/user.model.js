@@ -25,12 +25,6 @@ const userSchema = new Schema(
       trim: true,
       minlength: 6,
     },
-    fullName: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
-    },
     phoneNumber: {
       type: String,
       trim: true,
@@ -60,6 +54,14 @@ const userSchema = new Schema(
       enum: ["user", "admin"],
       default: "user",
     },
+    isScoreReportUser: {
+      type: Boolean,
+      default: false,
+    },
+    organization: {
+      type: String,
+      ref: "Organization",
+    },
     refreshToken: {
       type: String,
     },
@@ -86,7 +88,6 @@ userSchema.methods.generateAccessToken = function () {
       _id: this._id,
       email: this.email,
       username: this.username,
-      fullName: this.fullName,
     },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: process.env.ACCESS_TOKEN_EXPIRY }

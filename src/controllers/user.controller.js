@@ -17,61 +17,32 @@ const generateAccessAndRefreshTokens = async (userId) => {
   } catch (error) {
     throw new ApiError(
       500,
-      "Something went wrong while generating referesh and access token"
+      "Something went wrong while generating refresh and access token"
     );
   }
 };
 
 const registerUser = asyncHandler(async (req, res) => {
-  //Get user details
-  //Validation
-  //Check if user already exists with username and email
-  //Create user object - create entry in db
-  //Remove password and refresh token fielf from response
-  //Check for user creation
-  //Send response
+  console.log(req.body);
+  
+  const { username, password, email, role } = req.body;
 
-  const {
-    fullName,
-    username,
-    password,
-    email,
-    company,
-    zone,
-    branch,
-    division,
-    role,
-    lob,
-  } = req.body;
-
-  if (
-    [fullName, username, password, email].some((field) => field?.trim() === "")
-  ) {
+  if ([username, password, email].some((field) => field?.trim() === "")) {
     throw new ApiError(400, "All fields are required");
   }
 
-  await User.findOne({
+  const existingUser = await User.findOne({
     $or: [{ username }, { email }],
-  }).then((user) => {
-    if (user) {
-      throw new ApiError(
-        409,
-        "User already exists with that username or email"
-      );
-    }
   });
 
+  if (existingUser) {
+    throw new ApiError(409, "User already exists with that username or email");
+  }
+
   const user = await User.create({
-    fullName,
+    ...req.body,
     username: username.toLowerCase(),
-    password,
-    email,
-    company,
-    zone,
-    branch,
-    division,
-    role,
-    lob,
+    role: role.toLowerCase(),
   });
 
   const createdUser = await User.findById(user._id).select(
@@ -96,17 +67,10 @@ const registerUser = asyncHandler(async (req, res) => {
 });
 
 const loginUser = asyncHandler(async (req, res) => {
-  // req body -> data
-  // username or email
-  //find the user
-  //password check
-  //access and referesh token
-  //send cookie
-
   const { email, username, password } = req.body;
 
   if (!username && !email) {
-    throw new ApiError(400, "username or email is required");
+    throw new ApiError(400, "Username or email is required");
   }
 
   const user = await User.findOne({
@@ -158,7 +122,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     req.user._id,
     {
       $unset: {
-        refreshToken: 1, // this removes the field from document
+        refreshToken: 1,
       },
     },
     {
@@ -187,13 +151,11 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   }
 
   try {
-    // Verify the incoming refresh token
     const decodedToken = jwt.verify(
       incomingRefreshToken,
       process.env.REFRESH_TOKEN_SECRET
     );
 
-    // Find the user in the database
     const user = await User.findById(decodedToken._id);
 
     if (!user) {
@@ -204,22 +166,19 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       throw new ApiError(401, "Refresh token is expired or used");
     }
 
-    // Generate new access and refresh tokens
-    const { accessToken, refreshToken } =
-      await generateAccessAndRefreshTokens(user._id);
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
+      user._id
+    );
 
-    // Update user's refresh token in the database
     user.refreshToken = refreshToken;
     await user.save();
 
-    // Set cookie options
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // Use secure cookies in production
-      sameSite: "Lax", // Adjust this depending on your use case
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Lax",
     };
 
-    // Set new tokens in cookies
     return res
       .status(200)
       .cookie("accessToken", accessToken, cookieOptions)
@@ -228,7 +187,6 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   } catch (error) {
     console.error("Refresh token error:", error.message);
 
-    // Clear the cookies if there's an error with the tokens
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
 
@@ -255,11 +213,8 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 });
 
 const getCurrentUser = asyncHandler(async (req, res) => {
-  // Extract the token from the HTTP-only cookie
   const token = req.cookies?.accessToken;
-  console.log(req.cookies);
 
-  // Check if the token exists
   if (!token) {
     return res
       .status(401)
@@ -267,11 +222,7 @@ const getCurrentUser = asyncHandler(async (req, res) => {
   }
 
   try {
-    // Verify the token using your secret key
     const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-    console.log("Decoded token payload:", decoded);
-
-    // Fetch the user based on the decoded token's payload (e.g., user ID)
     const user = await User.findById(decoded._id).select(
       "-password -refreshToken"
     );
@@ -280,12 +231,10 @@ const getCurrentUser = asyncHandler(async (req, res) => {
       return res.status(404).json(new ApiResponse(404, null, "User not found"));
     }
 
-    // Respond with the user details
     return res
       .status(200)
       .json(new ApiResponse(200, user, "User fetched successfully"));
   } catch (error) {
-    // If token verification fails, return an error
     console.error("Token verification error:", error);
     return res
       .status(401)
@@ -294,26 +243,106 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 });
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
-  const { fullName, email } = req.body;
+  const { email, username, division, company, zone, branch, lob } = req.body;
 
-  if (!fullName || !email) {
-    throw new ApiError(400, "All fields are required");
+  if (!req.user?._id) {
+    return res.status(401).json(new ApiResponse(401, null, "Unauthorized"));
   }
 
+  if (!email) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Email is required"));
+  }
+
+  const updateFields = {
+    email,
+    ...(username && { username }),
+    ...(division && { division }),
+    ...(company && { company }),
+    ...(zone && { zone }),
+    ...(branch && { branch }),
+    ...(lob && { lob }),
+  };
+
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!user) {
+      return res.status(404).json(new ApiResponse(404, null, "User not found"));
+    }
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, user, "Account details updated successfully"));
+  } catch (error) {
+    console.error("Update Error:", error);
+    return res.status(500).json(new ApiResponse(500, null, "Server Error"));
+  }
+});
+
+const getAllUsers = asyncHandler(async (req, res) => {
+  try {
+    const users = await User.find().select("-password -refreshToken");
+
+    if (!users.length) {
+      return res.status(404).json(new ApiResponse(404, [], "No users found"));
+    }
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, users, "Users fetched successfully"));
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    return res
+      .status(500)
+      .json(new ApiResponse(500, null, "Internal Server Error"));
+  }
+});
+
+const getUserById = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const user = await User.findById(userId).select("-password -refreshToken");
+
+  if (!user) {
+    return res.status(404).json(new ApiResponse(404, null, "User not found"));
+  }
+
+  res.status(200).json(new ApiResponse(200, user, "User fetched successfully"));
+});
+
+const updateUserById = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const updatedData = req.body;
+
   const user = await User.findByIdAndUpdate(
-    req.user?._id,
-    {
-      $set: {
-        fullName,
-        email: email,
-      },
-    },
-    { new: true }
+    userId,
+    { $set: updatedData },
+    { new: true, runValidators: true }
   ).select("-password");
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, user, "Account details updated successfully"));
+  if (!user) {
+    return res.status(404).json(new ApiResponse(404, null, "User not found"));
+  }
+
+  res.status(200).json(new ApiResponse(200, user, "User updated successfully"));
+});
+
+const deleteUserById = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const user = await User.findByIdAndDelete(userId);
+
+  if (!user) {
+    return res.status(404).json(new ApiResponse(404, null, "User not found"));
+  }
+
+  res.status(200).json(new ApiResponse(200, null, "User deleted successfully"));
 });
 
 export {
@@ -324,4 +353,8 @@ export {
   changeCurrentPassword,
   getCurrentUser,
   updateAccountDetails,
+  getAllUsers,
+  getUserById,
+  updateUserById,
+  deleteUserById,
 };
